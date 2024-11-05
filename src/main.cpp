@@ -26,6 +26,10 @@ union a16to8 {
 	 uint8_t a8[2];
 };
 uint16_t crc_generate(uint8_t *buffer, size_t length, uint16_t startValue );
+uint8_t MPS_status();
+uint8_t MPS_version();
+uint8_t MPS_start_meas();
+uint8_t MPS_ans();
 void setup() {
   Serial.begin(9600);
   Serial2.begin(38400);
@@ -43,6 +47,54 @@ void setup() {
   Serial.print("DFRobot version is : ");
   Serial.println(version);
   delay(3000);
+  uint8_t error;
+  do {
+    error = MPS_status();
+  }while (error != 0);
+  do {
+    error = MPS_version();
+  }while (error != 0);
+  do {
+    error = MPS_start_meas();
+  }while (error != 0);
+  delay(2000);
+}
+
+void loop() {
+  /**
+   *@brief  Get PM1.0 concentration
+   *@param  PARTICLE_PM1_0_STANDARD   
+   *@n      PARTICLE_PM2_5_STANDARD   
+   *@n      PARTICLE_PM10_STANDARD    
+   *@n      PARTICLE_PM1_0_ATMOSPHERE 
+   *@n      PARTICLE_PM2_5_ATMOSPHERE 
+   *@n      PARTICLE_PM10_ATMOSPHERE  
+   */  
+  uint16_t concentration = particle.gainParticleConcentration_ugm3(PARTICLE_PM1_0_STANDARD);
+  Serial.print("PM1.0 concentration:");
+  Serial.print(concentration);
+  Serial.println(" mg/m3");
+  MPS_ans();
+  delay(1000);
+}
+
+uint16_t crc_generate(uint8_t *buffer, size_t length, uint16_t startValue ) {
+  uint16_t crc;
+  uint8_t *p;
+  int ii;
+
+  crc = startValue;
+
+  for(p = buffer, ii = 0; ii < length; ii++) {
+    crc = (crc << 8) ^ crc_table[(crc >> 8) ^ *p];
+    p++;
+  }
+
+  return crc;
+
+}
+
+uint8_t MPS_status() {
   union a16to8 checksumBytes;
   cmdID[1] = 0x41;
   cmdID[0] = 0x00;
@@ -61,42 +113,100 @@ void setup() {
   Serial2.write(buffHeader, 8);
   delay(100);
   Serial.println("MPS status reply: ");
+  uint8_t ret;
   while (Serial2.available()) {
-    Serial.printf("0x%02X ", Serial2.read());
+    ret = Serial2.read();
+    Serial.printf("0x%02X ", ret);
   }
   Serial.println();
+  return ret;
 }
 
-void loop() {
-  /**
-   *@brief  Get PM1.0 concentration
-   *@param  PARTICLE_PM1_0_STANDARD   
-   *@n      PARTICLE_PM2_5_STANDARD   
-   *@n      PARTICLE_PM10_STANDARD    
-   *@n      PARTICLE_PM1_0_ATMOSPHERE 
-   *@n      PARTICLE_PM2_5_ATMOSPHERE 
-   *@n      PARTICLE_PM10_ATMOSPHERE  
-   */  
-  uint16_t concentration = particle.gainParticleConcentration_ugm3(PARTICLE_PM1_0_STANDARD);
-  Serial.print("PM1.0 concentration:");
-  Serial.print(concentration);
-  Serial.println(" mg/m3");
-  delay(1000);
-}
-
-
-uint16_t crc_generate(uint8_t *buffer, size_t length, uint16_t startValue ) {
-  uint16_t crc;
-  uint8_t *p;
-  int ii;
-
-  crc = startValue;
-
-  for(p = buffer, ii = 0; ii < length; ii++) {
-    crc = (crc << 8) ^ crc_table[(crc >> 8) ^ *p];
-    p++;
+uint8_t MPS_version() {
+  union a16to8 checksumBytes;
+  cmdID[1] = 0x42;
+  cmdID[0] = 0x00;
+  length[1] = 0x00;
+  length[0] = 0x00;
+  memcpy(buffHeader, cmdID, 2);
+  memcpy(buffHeader + 2, length, 2);
+  memcpy(buffHeader + 4, reserved, 2);
+  checksumBytes.a16 = crc_generate(buffHeader, 0, 0xFFFF);
+  memcpy(buffHeader + 6, checksumBytes.a8, 2);
+  Serial.println("MPS version: ");
+  for (int i = 0; i < 8; i++) {
+    Serial.printf("0x%02X ", buffHeader[i]);
   }
+  Serial.println();
+  Serial2.write(buffHeader, 8);
+  delay(100);
+  Serial.println("MPS version reply: ");
+  uint8_t ret;
+  while (Serial2.available()) {
+    ret = Serial2.read();
+    Serial.printf("0x%02X ", ret);
+  }
+  Serial.println();
+  ret = 0;
+  return ret;
+}
 
-  return crc;
+uint8_t MPS_start_meas() {
+  union a16to8 checksumBytes;
+  cmdID[1] = 0x61;
+  cmdID[0] = 0x00;
+  length[1] = 0x00;
+  length[0] = 0x01;
+  memcpy(buffHeader, cmdID, 2);
+  memcpy(buffHeader + 2, length, 2);
+  memcpy(buffHeader + 4, reserved, 2);
+  checksumBytes.a16 = crc_generate(buffHeader, 0, 0xFFFF);
+  memcpy(buffHeader + 6, checksumBytes.a8, 2);
+  uint8_t command = 0x12;
+  memcpy(buffHeader + 8, &command, 1);
+  Serial.println("MPS start meas: ");
+  for (int i = 0; i < 8; i++) {
+    Serial.printf("0x%02X ", buffHeader[i]);
+  }
+  Serial.println();
+  Serial2.write(buffHeader, 8);
+  delay(100);
+  Serial.println("MPS start meas reply: ");
+  uint8_t ret;
+  while (Serial2.available()) {
+    ret = Serial2.read();
+    Serial.printf("0x%02X ", ret);
+  }
+  Serial.println();
+  ret = 0;
+  return ret;
+}
 
+uint8_t MPS_ans() {
+  union a16to8 checksumBytes;
+  cmdID[1] = 0x01;
+  cmdID[0] = 0x00;
+  length[1] = 0x00;
+  length[0] = 0x00;
+  memcpy(buffHeader, cmdID, 2);
+  memcpy(buffHeader + 2, length, 2);
+  memcpy(buffHeader + 4, reserved, 2);
+  checksumBytes.a16 = crc_generate(buffHeader, 0, 0xFFFF);
+  memcpy(buffHeader + 6, checksumBytes.a8, 2);
+  Serial.println("MPS answer: ");
+  for (int i = 0; i < 8; i++) {
+    Serial.printf("0x%02X ", buffHeader[i]);
+  }
+  Serial.println();
+  Serial2.write(buffHeader, 8);
+  delay(100);
+  Serial.println("MPS answer reply: ");
+  uint8_t ret;
+  while (Serial2.available()) {
+    ret = Serial2.read();
+    Serial.printf("0x%02X ", ret);
+  }
+  Serial.println();
+  ret = 0;
+  return ret;
 }
