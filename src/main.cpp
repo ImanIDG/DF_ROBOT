@@ -25,6 +25,7 @@ union a16to8 {
 	 uint16_t a16;
 	 uint8_t a8[2];
 };
+uint16_t crc_generate(uint8_t *buffer, size_t length, uint16_t startValue );
 void setup() {
   Serial.begin(9600);
   Serial2.begin(38400);
@@ -81,4 +82,21 @@ void loop() {
   Serial.print(concentration);
   Serial.println(" mg/m3");
   delay(1000);
+}
+
+
+uint16_t crc_generate(uint8_t *buffer, size_t length, uint16_t startValue ) {
+  uint16_t crc;
+  uint8_t *p;
+  int ii;
+
+  crc = startValue;
+
+  for(p = buffer, ii = 0; ii < length; ii++) {
+    crc = (crc << 8) ^ crc_table[(crc >> 8) ^ *p];
+    p++;
+  }
+
+  return crc;
+
 }
