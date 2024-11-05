@@ -50,9 +50,9 @@ void setup() {
   length[0] = 0x00;
   memcpy(buffHeader, cmdID, 2);
   memcpy(buffHeader + 2, length, 2);
-  memcpy(buffHeader + 2, reserved, 2);
+  memcpy(buffHeader + 4, reserved, 2);
   checksumBytes.a16 = crc_generate(buffHeader, 0, 0xFFFF);
-  memcpy(buffHeader + 2, checksumBytes.a8, 2);
+  memcpy(buffHeader + 6, checksumBytes.a8, 2);
   Serial.println("MPS status: ");
   for (int i = 0; i < 8; i++) {
     Serial.printf("0x%02X ", buffHeader[i]);
