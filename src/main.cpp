@@ -164,18 +164,23 @@ uint8_t MPS_version(uint8_t cmdID, uint8_t *payload, uint16_t payloadLen) {
   cksum = crc_generate((uint8_t *) &header, RQST_HDR_LENGTH, 0xFFFF);
   header.cksum = cksum;
   Serial.println("MPS version: ");
-  for (int i = 0; i < RQST_HDR_LENGTH; i++) {
-    Serial.printf("0x%02X ", (uint8_t *) &header);
-  }
-  Serial.println();
   Serial2.write((uint8_t *) &header, RQST_HDR_LENGTH);
+  delay(300);
+  int i = 0;
+  while(Serial2.available()) {
+    Serial.print(i);
+    i++;
+    Serial.println(Serial2.read());
+  }
+  /*
   uint8_t *data;
   uint16_t size;
   uartRecv(cmdID, data, size);
   version = (uart_version_t *) data;
   Serial.printf("SW Version: %u.%u.%u.%u\nHW Version: %u.%u\nProtocol: %u.%u\n",
          version->sw_w, version->sw_x, version->sw_y, version->sw_z,
-         version->hw_w, version->hw_x, version->proto_w, version->proto_x);  
+         version->hw_w, version->hw_x, version->proto_w, version->proto_x);
+  */
   uint8_t ret = 0;
   return ret;
 }
