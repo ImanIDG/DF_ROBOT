@@ -103,7 +103,7 @@ uint8_t MPS_status() {
   memcpy(buffHeader, cmdID, 2);
   memcpy(buffHeader + 2, length, 2);
   memcpy(buffHeader + 4, reserved, 2);
-  checksumBytes.a16 = crc_generate(buffHeader, 0, 0xFFFF);
+  checksumBytes.a16 = crc_generate(buffHeader, 6, 0xFFFF);
   memcpy(buffHeader + 6, checksumBytes.a8, 2);
   Serial.println("MPS status: ");
   for (int i = 0; i < 8; i++) {
@@ -131,7 +131,7 @@ uint8_t MPS_version() {
   memcpy(buffHeader, cmdID, 2);
   memcpy(buffHeader + 2, length, 2);
   memcpy(buffHeader + 4, reserved, 2);
-  checksumBytes.a16 = crc_generate(buffHeader, 0, 0xFFFF);
+  checksumBytes.a16 = crc_generate(buffHeader, 6, 0xFFFF);
   memcpy(buffHeader + 6, checksumBytes.a8, 2);
   Serial.println("MPS version: ");
   for (int i = 0; i < 8; i++) {
@@ -160,7 +160,7 @@ uint8_t MPS_start_meas() {
   memcpy(buffHeader, cmdID, 2);
   memcpy(buffHeader + 2, length, 2);
   memcpy(buffHeader + 4, reserved, 2);
-  checksumBytes.a16 = crc_generate(buffHeader, 0, 0xFFFF);
+  checksumBytes.a16 = crc_generate(buffHeader, 6, 0xFFFF);
   memcpy(buffHeader + 6, checksumBytes.a8, 2);
   uint8_t command = 0x12;
   memcpy(buffHeader + 8, &command, 1);
@@ -191,7 +191,7 @@ uint8_t MPS_ans() {
   memcpy(buffHeader, cmdID, 2);
   memcpy(buffHeader + 2, length, 2);
   memcpy(buffHeader + 4, reserved, 2);
-  checksumBytes.a16 = crc_generate(buffHeader, 0, 0xFFFF);
+  checksumBytes.a16 = crc_generate(buffHeader, 6, 0xFFFF);
   memcpy(buffHeader + 6, checksumBytes.a8, 2);
   Serial.println("MPS answer: ");
   for (int i = 0; i < 8; i++) {
