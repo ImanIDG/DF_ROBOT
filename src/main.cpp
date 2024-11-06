@@ -77,9 +77,10 @@ void setup() {
     error = MPS_status(0x41, NULL, 0);
   }while (error != 0);
   delay(1000);
-  do {
+  while (1) {
     error = MPS_version(0x42, NULL, 0);
-  }while (error != 0);
+    delay(1000);
+  }
   /*
   do {
     error = MPS_start_meas();
