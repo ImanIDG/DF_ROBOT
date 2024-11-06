@@ -16,7 +16,9 @@
   DFRobot_AirQualitySensor particle(&Wire ,I2C_ADDRESS);
 
 #define RQST_HDR_LENGTH     sizeof(uartRqstHeader_t)
-uint8_t buffHeader[18];
+#define REPLY_HDR_LENGTH    sizeof(uartReplyHeader_t)
+#define UART_MAX_DATA_SIZE  (1024*8)    /* maximum packet:  header + payload */
+#define UART_SUCCESS           0x00
 union a16to8 {
 	 uint16_t a16;
 	 uint8_t a8[2];
@@ -27,9 +29,30 @@ typedef struct {
   uint16_t reserved;
   uint16_t cksum;
 } uartRqstHeader_t;
+
+typedef struct {
+  uint8_t cmdID;
+  uint8_t status;
+  uint16_t length;
+  uint16_t cksum;
+} uartReplyHeader_t;
+typedef struct {
+  uint8_t sw_w;
+  uint8_t sw_x;
+  uint8_t sw_y;
+  uint8_t sw_z;
+  uint8_t hw_w;
+  uint8_t hw_x;
+  uint8_t proto_w;
+  uint8_t proto_x;
+} uart_version_t;
 uint16_t crc_generate(uint8_t *buffer, size_t length, uint16_t startValue);
 uint8_t MPS_status(uint8_t cmdID, uint8_t *payload, uint16_t payloadLen);
 uint8_t MPS_version(uint8_t cmdID, uint8_t *payload, uint16_t payloadLen);
+uint32_t uartRecv(uint8_t cmdID, uint8_t *payload, uint16_t payloadLen);
+uint32_t uartSingleRecv(uint8_t cmdID, uint8_t *payload, uint16_t payloadLen);
+
+uint32_t numOfRetries = 0;
 //uint8_t MPS_start_meas();
 //uint8_t MPS_ans();
 void setup() {
@@ -53,6 +76,7 @@ void setup() {
   do {
     error = MPS_status(0x41, NULL, 0);
   }while (error != 0);
+  delay(1000);
   do {
     error = MPS_version(0x42, NULL, 0);
   }while (error != 0);
@@ -126,6 +150,10 @@ uint8_t MPS_status(uint8_t cmdID, uint8_t *payload, uint16_t payloadLen) {
 }
 
 uint8_t MPS_version(uint8_t cmdID, uint8_t *payload, uint16_t payloadLen) {
+  uint16_t fwVersion = 0;
+
+  //Get the FW version
+  uart_version_t *version;
   uartRqstHeader_t header;
   uint16_t cksum, rxCksum, length;
 
@@ -135,22 +163,107 @@ uint8_t MPS_version(uint8_t cmdID, uint8_t *payload, uint16_t payloadLen) {
 
   cksum = crc_generate((uint8_t *) &header, RQST_HDR_LENGTH, 0xFFFF);
   header.cksum = cksum;
-  Serial.println("MPS status: ");
+  Serial.println("MPS version: ");
   for (int i = 0; i < RQST_HDR_LENGTH; i++) {
     Serial.printf("0x%02X ", (uint8_t *) &header);
   }
   Serial.println();
   Serial2.write((uint8_t *) &header, RQST_HDR_LENGTH);
-  delay(100);
-  Serial.println("MPS status reply: ");
-  uint8_t ret;
-  while (Serial2.available()) {
-    ret = Serial2.read();
-    Serial.printf("0x%02X ", ret);
-  }
-  Serial.println();
+  uint8_t *data;
+  uint16_t size;
+  uartRecv(cmdID, data, size);
+  version = (uart_version_t *) data;
+  Serial.printf("SW Version: %u.%u.%u.%u\nHW Version: %u.%u\nProtocol: %u.%u\n",
+         version->sw_w, version->sw_x, version->sw_y, version->sw_z,
+         version->hw_w, version->hw_x, version->proto_w, version->proto_x);  
+  uint8_t ret = 0;
   return ret;
 }
+
+uint32_t uartRecv(uint8_t cmdID, uint8_t *payload, uint16_t payloadLen) {
+  int32_t retry = 1;
+  uint32_t status;
+
+  status = uartSingleRecv(cmdID, payload, payloadLen);
+  if((status == UART_SUCCESS) || (numOfRetries == 0))
+    return status;
+
+  do {
+    status = uartSingleRecv(cmdID, payload, payloadLen);
+  } while ((retry++ < numOfRetries) && (status != UART_SUCCESS));
+
+  return status;
+}
+
+uint32_t uartSingleRecv(uint8_t cmdID, uint8_t *payload, uint16_t payloadLen) {
+  uint16_t rxCksum, cksum;
+  int rxLen;
+  uint32_t timeout;
+  uartRqstHeader_t header;
+  uartReplyHeader_t *reply;
+  uint8_t buffer[UART_MAX_DATA_SIZE+1];
+
+  memset(buffer, 0, sizeof(buffer));
+
+  rxLen = Serial2.read(buffer, sizeof(uartReplyHeader_t));
+  if(rxLen <= 0) {
+    printf("Failed to get reply: %s (%d)\n", strerror(errno),  errno);
+    return 0xffffffff;
+  }
+
+  reply = (uartReplyHeader_t *) buffer;
+  if(rxLen < REPLY_HDR_LENGTH) {
+    Serial.printf("Incomplete header received: %d bytes\n", rxLen);
+    return 0xffffffff;
+  }
+
+  if(reply->length != 0) {  /* Is there a payload for this reply? */
+    rxLen = Serial2.read(&buffer[REPLY_HDR_LENGTH], reply->length);
+    if(rxLen < reply->length) {
+      Serial.printf("Failed to get reply payload: %s (%d)\n", strerror(errno),  errno);
+      return 0xffffffff;
+    }
+  }
+
+  rxCksum = reply->cksum;
+  reply->cksum = 0;  /* zero out checksum field */
+  cksum = crc_generate(buffer, REPLY_HDR_LENGTH + reply->length, 0xFFFF);
+  if(rxCksum != cksum) {
+    Serial.printf("Checksum failed: expected 0x%x, received 0x%x\n", cksum, rxCksum);
+    reply->cksum = rxCksum;   /* restore received checksum */
+    return 0xffffffff;
+  }
+
+  reply->cksum = rxCksum;   /* restore received checksum */
+
+  if(reply->status != UART_SUCCESS) {
+    if(reply->status >= 0x20) {
+      printf("Sensor hardware error: 0x%x\n", reply->status);
+    } else {
+      printf("Command returned error status: 0x%x\n", reply->status);
+      return (reply->status);  /* Sensor sent communication error */
+    }
+  }
+  
+  if(reply->cmdID != cmdID) {
+    printf("cmdID mismatch: expected 0x%x, received 0x%x\n", cmdID, reply->cmdID);
+    return 0xffffff;
+  }
+
+  if (reply->length == 0)
+    return UART_SUCCESS;  /* No payload, we are done. */
+
+  if(payloadLen < reply->length) {
+    printf("Buffer too small for payload (%d < %d)\n", payloadLen, reply->length);
+    return 0xffffff;
+  }
+
+  memset(payload, 0, payloadLen);
+  memcpy(payload, &buffer[REPLY_HDR_LENGTH], reply->length);
+
+  return UART_SUCCESS;
+}
+
 /*
 uint8_t MPS_start_meas() {
   union a16to8 checksumBytes;
